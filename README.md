@@ -1,88 +1,207 @@
+# Fraud Case Intelligence System
 
-# Digital Marketplace Fraudulent Customer Classification Detection Model
+This project is an AI-powered fraud case intelligence system that translates model predictions into interpretable root-cause categories, analyst-facing summaries, and operational insights.
 
-## 1. Business Problem
+The project combined data science work — feature engineering, fraud modeling, and risk scoring — with product thinking to design a dashboard and decision-support workflow that helps teams investigate flagged cases, identify friction, and act on patterns more efficiently.
 
-Digital marketplaces are increasingly exposed to identity‑based and transaction fraud, including fake or multi‑opened accounts, account takeovers using stolen credentials, and abusive chargebacks where customers dispute legitimate orders to obtain refunds. These behaviors create direct financial losses through refunds, chargeback fees, and fulfillment costs, and they also erode trust with merchants and legitimate customers, who bear the impact through stricter policies and added friction in the product experience. As platforms scale, manual review teams and static rule‑based systems cannot keep pace with rising transaction volume and rapidly evolving fraud tactics, leading either to undetected fraud or overly aggressive controls that block good users. To remain competitive and protect marketplace economics, platforms need data‑driven systems that can proactively identify high‑risk customers and behaviors in near real time, enabling targeted interventions that reduce fraud losses while preserving a low‑friction experience for trustworthy users. This project addresses that need by developing a fraudulent customer classification model that scores account‑level risk and can plug into operational workflows such as blocking, step‑up verification, or prioritized manual review.
+The core question this project tries to answer is:
 
-## 2. Data Understanding
+**What patterns are driving fraud flags, where might the system be creating customer friction, and what should an analyst or ops team look at next?**
 
-Data is merged on `consumer_id` from three folders:
+## Project Goals
 
-- **User** ([`datasets/user/`](datasets/user/)): `user.csv`, `delivery_address.csv`, `email.csv` — password history, email traits, delivery addresses, tenure
-- **Item** ([`datasets/item/`](datasets/item/)): `latest_item.csv` — order amount, category, product title, quantity, tag count
-- **Activity** ([`datasets/activity/`](datasets/activity/)): `per_day.csv`, `per_week.csv`, `per_month.csv` — transactions, add-to-cart, purchase totals, payment changes, devices per user, etc.
+- Build a baseline fraud-risk model for imbalanced customer fraud detection
+- Preserve `consumer_id` for case traceability
+- Convert model predictions into structured case intelligence
+- Surface likely root causes and recurring behavioral patterns
+- Identify possible false-positive or friction-heavy segments
+- Present the results in a simple Streamlit analyst console
 
-**Key stats** (from EDA):
+## Dataset
 
-- ~16,485 consumers, ~6.5% fraudulent (class imbalance)
-- 29 features after merge
-- High missingness in activity features (many users have no per_day/per_week/per_month data)
+The data is merged on `consumer_id` from three domains:
 
-## 3. Project Objective
+- `datasets/user/`: user profile, email, delivery address data
+- `datasets/item/`: latest item and order attributes
+- `datasets/activity/`: per-day, per-week, and per-month behavioral activity
 
-Build a binary classifier to predict `is_fraudulent` for consumers and rank them by fraud risk for review or automated action.
+Key dataset facts:
 
-## 4. Methods
+- `16,485` customers
+- About `6.5%` fraudulent customers
+- Imbalanced binary classification problem
+- Final merged modeling table contains behavioral, item, address, email, and activity signals
 
-### 4A. Exploratory Data Analysis
+## Project Workflow
 
-Univariate stats, distributions, and box plots by fraud status. Variables with clearer separation between fraud and non-fraud: transaction history, email traits, delivery behavior, spending patterns, account activity, device usage, and payment behavior.
+### 1. EDA and Cleaning
 
-### 4B. Data Cleaning and Preparation
+Notebook: [`01_eda_cleaning.ipynb`](01_eda_cleaning.ipynb)
 
-- Categorical missing → `"Missing"`
-- Numerical missing → `-999`
-- Cast categorical columns to `category`
-- Merge user, item, and activity on `consumer_id`
+Main work:
 
-### 4C. Feature Engineering
+- merged source tables on `consumer_id`
+- analyzed fraud vs non-fraud distributions
+- handled missing values
+- preserved `consumer_id` for traceability
+- created a stratified `80/20` train-test split
 
-All 29 features are used; no additional feature creation in the current pipeline. Preprocessing via `ColumnTransformer`: `OneHotEncoder(handle_unknown="ignore")` for categorical, `StandardScaler` for numerical.
+Why stratification mattered:
 
-### 4D. Feature Selection
+- the fraud rate is only about `6.5%`
+- stratified splitting preserved the fraud ratio across train and test
+- this made evaluation more reliable for an imbalanced classification problem
 
-Not implemented; all features are used.
+### 2. Feature Engineering and Baseline Modeling
 
-### 4E. Model Selection and Hyperparameter Tuning
+Notebook: [`02_feature_eng.ipynb`](02_feature_eng.ipynb)
 
-Baseline XGBClassifier in a `Pipeline` with the preprocessor. Hyperparameter tuning in the notebooks.
+Main work:
 
-### 4F. Evaluation
+- loaded saved train and test sets
+- used `StratifiedKFold` cross-validation on the training set
+- encoded `latest_changed_password` with `OneHotEncoder`
+- encoded high-cardinality fields like `latest_item_category` and `latest_item_product_title` with frequency encoding
+- trained a baseline `LogisticRegression` model inside a preprocessing pipeline
+- generated test-set risk scores and prediction outputs
 
-ROC-AUC on training set (current baseline). Validation/test metrics can be added.
+Why cross-validation was used:
 
-## 5. Incrementality Test
+- to evaluate the model more reliably than a single validation split
+- to preserve the fraud ratio in each fold
+- to keep all preprocessing inside the model pipeline and avoid leakage
 
-Placeholder — no implementation yet. Typical use: compare model predictions vs. random or business rules to measure lift.
+### 3. Case Intelligence Layer
+
+Notebook: [`03_case_intelligence.ipynb`](03_case_intelligence.ipynb)
+
+Main work:
+
+- built `case_intel_df` from baseline predictions
+- attached case-level context and behavioral features
+- added `risk_band`
+- created error flags such as true positives and false positives
+- started building a rule-based intelligence layer for:
+  - root-cause categories
+  - reason codes
+  - friction analysis
+  - summary tables
+
+This notebook shifts the project from:
+
+`fraud prediction` -> `fraud case intelligence`
+
+## Current Baseline Results
+
+Current baseline model: `LogisticRegression`
+
+Test-set metrics from the baseline workflow:
+
+- `Average Precision (AP)`: `0.680`
+- `ROC AUC`: `0.960`
+- `Precision`: `0.42`
+- `Recall`: `0.89`
+- `F1-score`: `0.57`
+
+Confusion matrix at the current threshold:
+
+```text
+[[2812  268]
+ [  24  193]]
+```
+
+Interpretation:
+
+- the baseline model separates fraud and non-fraud well overall
+- recall is high, so most fraud cases are caught
+- precision is lower, which means there is still meaningful customer friction from false positives
+- this makes the intelligence and friction-analysis layer especially important
+
+## Analyst-Facing Outputs
+
+Saved case table:
+
+- [`datasets/case_intelligence_baseline.csv`](datasets/case_intelligence_baseline.csv)
+
+Current case table includes fields such as:
+
+- `consumer_id`
+- `y_true`
+- `risk_score`
+- `predicted_label`
+- `risk_band`
+- raw behavioral and item features
+- error flags like `is_tp`, `is_fp`, `is_fn`, `is_tn`
+
+This table is the foundation for:
+
+- root-cause exploration
+- case-level review
+- friction analysis
+- AI-generated summaries
+- dashboard views
+
+## Streamlit Dashboard
+
+App file: [`app.py`](app.py)
+
+The dashboard is designed as a **case intelligence console**, not a generic ML evaluation page.
+
+It is meant to surface:
+
+1. What kinds of cases are being flagged
+2. Where customer friction may be happening
+3. What individual flagged cases look like
+4. What an analyst or ops team should review next
+
+Current dashboard sections:
+
+- `Overview`
+- `Case Explorer`
+- `Friction Analysis`
+
+To run locally:
+
+```bash
+python -m pip install streamlit
+python -m streamlit run app.py
+```
 
 ## Project Structure
 
-```
+```text
 Digital-Marketplace-Fraud-Prediction-Model/
-├── 01_eda_cleaning.ipynb    # EDA, cleaning, train/val/test split, save CSVs
-├── 02_feature_eng.ipynb     # Load splits, preprocess, XGB pipeline, evaluation
-├── datasets/
-│   ├── user/                # user.csv, delivery_address.csv, email.csv
-│   ├── item/                # latest_item.csv
-│   ├── activity/            # per_day.csv, per_week.csv, per_month.csv
-│   ├── train/               # X_train.csv, y_train.csv, ids_train.csv
-│   ├── val/                 # X_val.csv, y_val.csv, ids_val.csv
-│   └── test/                # X_test.csv, y_test.csv, id_test.csv
-└── README.md
+├── 01_eda_cleaning.ipynb
+├── 02_feature_eng.ipynb
+├── 03_case_intelligence.ipynb
+├── app.py
+├── README.md
+└── datasets/
+    ├── activity/
+    ├── item/
+    ├── user/
+    ├── train/
+    ├── test/
+    └── case_intelligence_baseline.csv
 ```
 
-## Setup and Usage
+## Next Steps
 
-**Dependencies:** `pandas`, `numpy`, `matplotlib`, `scikit-learn`, `xgboost`
+- finalize `root_cause_category` and `reason_code_combo`
+- add stronger category-level and friction-level summary tables
+- generate AI postmortem summaries from the structured outputs
+- improve threshold tuning based on business tradeoffs
+- extend the dashboard with richer filtering and recommendations
 
-**Execution order:**
+## Why This Project Is Different
 
-1. Run `01_eda_cleaning.ipynb` (produces train/val/test CSVs)
-2. Run `02_feature_eng.ipynb` (loads splits, trains model)
+This is not just a fraud model repository.
 
-## Data Split
+The project is designed to simulate how a real fraud operations or escalation team works:
 
-- Stratified split: 80% test, 20% temp (train+val)
-- Of temp: 80% train, 20% validation
-- Approximate sizes: Train ~2,637, Val ~660, Test ~13,188
+- score risk
+- preserve traceability
+- explain why cases were flagged
+- identify repeat patterns
+- surface likely friction
+- turn model outputs into action
